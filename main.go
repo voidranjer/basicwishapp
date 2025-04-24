@@ -6,16 +6,15 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/voidranjer/basicwishapp/internal/model"
-
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
 	"github.com/charmbracelet/ssh"
 	"github.com/charmbracelet/wish"
@@ -25,8 +24,8 @@ import (
 )
 
 const (
-	host = "0.0.0.0"
-	port = "22"
+	host = "localhost"
+	port = "3000"
 )
 
 func main() {
@@ -62,28 +61,55 @@ func main() {
 	}
 }
 
-// You can wire any Bubble Tea model up to the middleware with a function that
-// handles the incoming ssh.Session. Here we just grab the terminal info and
-// pass it to the new model. You can also return tea.ProgramOptions (such as
-// tea.WithAltScreen) on a session by session basis.
+/* -------------------------------------------------- */
+
 func teaHandler(s ssh.Session) (tea.Model, []tea.ProgramOption) {
-	// This should never fail, as we are using the activeterm middleware.
 	s.Pty()
 
-	// When running a Bubble Tea app over SSH, you shouldn't use the default
-	// lipgloss.NewStyle function.
-	// That function will use the color profile from the os.Stdin, which is the
-	// server, not the client.
-	// We provide a MakeRenderer function in the bubbletea middleware package,
-	// so you can easily get the correct renderer for the current session, and
-	// use it to create the styles.
-	// The recommended way to use these styles is to then pass them down to
-	// your Bubble Tea model.
-	renderer := bubbletea.MakeRenderer(s)
-	txtStyle := renderer.NewStyle().Foreground(lipgloss.Color("10"))
-	quitStyle := renderer.NewStyle().Foreground(lipgloss.Color("8"))
+	return initialModel(), []tea.ProgramOption{tea.WithAltScreen()}
+}
 
-	m := model.InitialModel(txtStyle, quitStyle)
+type model struct {
+	ti textinput.Model
+}
 
-	return m, []tea.ProgramOption{tea.WithAltScreen()}
+func initialModel() model {
+	ti := textinput.New()
+	ti.Focus()
+	ti.Placeholder = "John Appleseed"
+	ti.Width = 20
+
+	return model{
+		ti,
+	}
+}
+
+func (m model) Init() tea.Cmd {
+	return textinput.Blink
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if val, ok := msg.(tea.KeyMsg); ok {
+
+		key := val.String()
+
+		if key == "ctrl+c" {
+			return m, tea.Quit
+		}
+
+		if key == "enter" {
+			os.WriteFile("output.log", []byte(m.ti.Value()), 0644)
+			return m, tea.Quit
+		}
+	}
+
+	var cmd tea.Cmd
+	m.ti, cmd = m.ti.Update(msg)
+
+	return m, cmd
+}
+
+func (m model) View() string {
+	output := fmt.Sprintf("What is your name?\n\n%v", m.ti.View())
+	return output
 }
